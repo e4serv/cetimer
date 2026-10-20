@@ -1,3 +1,3 @@
-# ce-timer
+# CE Timer
 
-- [CE Timer](./ce_timer.html)
+- [CE Timer](./cetimer.html)
