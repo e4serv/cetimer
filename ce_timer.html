@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CE Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #000000; /* 黒背景 */
+            color: #ffffff; /* 白文字 */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* スクロール防止 */
+        }
+
+        /* タイマーコンテナ。残りスペースを埋める */
+        .timer-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+            position: relative;
+            padding-bottom: 120px; /* コントロールバーのスペース確保 */
+        }
+
+        /* メインタイマーを画面の縦横どちらかいっぱいに */
+        .time-main {
+            font-size: min(28vw, 50vh); /* ＋表示時(6文字)に画面幅ギリギリになる最大サイズ */
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            user-select: none;
+            letter-spacing: -0.02em;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        /* サブタイマー */
+        .time-sub {
+            font-size: min(6vw, 8vh);
+            font-weight: 500;
+            color: #9ca3af;
+            cursor: pointer;
+            user-select: none;
+            position: absolute;
+            top: 2rem;
+            right: 3rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 自然に溶け込むフリーテキスト欄（サブタイマーより大きく設定） */
+        .seamless-textarea {
+            width: 95%;
+            max-width: 1600px;
+            text-align: center;
+            background: transparent;
+            border: none;
+            outline: none;
+            font-size: min(5vw, 6.3vh); /* 現在の約70%のサイズに変更 */
+            color: #e2e8f0;
+            resize: none;
+            overflow: hidden;
+            font-weight: 600;
+            margin-top: 5vh; /* ★メイン時間との間にスペースを空ける */
+            line-height: 1.3;
+        }
+        .seamless-textarea::placeholder {
+            color: #475569;
+            font-weight: 500;
+        }
+
+        /* モダンなコントロールバー（半透明なし、大きなタップ領域） */
+        .controls-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #0a0a0a; /* ★悪目立ちしない黒に近い背景色 */
+            border-top: 1px solid #1a1a1a;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            z-index: 50;
+        }
+
+        .settings-group {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        /* プリセットボタンのスタイル */
+        .presets-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .preset-btn {
+            background: #1a1a1a;
+            color: #9ca3af;
+            border: 1px solid #262626;
+            padding: 0.5rem 1rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .preset-btn:hover {
+            background: #2a2a2a;
+            color: #e2e8f0;
+        }
+
+        /* 時間選択トリガーボタン */
+        .time-display-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 0.5rem;
+            color: #d4d4d4;
+            padding: 0.25rem 0.6rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .time-display-btn:hover:not(:disabled) {
+            border-color: #3b82f6;
+            background: #262626;
+            color: #ffffff;
+        }
+
+        /* ★ 設定項目が無効化されている時のスタイル */
+        .preset-btn:disabled,
+        .time-display-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none; /* ホバー効果も無効化 */
+        }
+
+        /* ホイールピッカーモーダル */
+        .picker-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.2s ease;
+        }
+        .picker-modal-overlay.hidden {
+            display: none;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .picker-modal-content {
+            background: #121212;
+            border: 1px solid #2a2a2a;
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            width: 90%;
+            max-width: 320px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .picker-wheels-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            margin: 1.25rem 0;
+            position: relative;
+        }
+
+        .wheel-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .wheel-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #9ca3af;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ダイレクト数字入力用インプット */
+        .picker-input {
+            width: 3.5rem;
+            background: #18181b;
+            border: 1px solid #3f3f46;
+            border-radius: 0.375rem;
+            color: #ffffff;
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 0.15rem 0.25rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            -moz-appearance: textfield;
+        }
+        .picker-input::-webkit-outer-spin-button,
+        .picker-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .picker-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .wheel-viewport {
+            height: 220px; /* 44px * 5アイテム */
+            width: 100%;
+            max-width: 90px;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            position: relative;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+            border-radius: 0.75rem;
+            background: #18181b;
+            touch-action: pan-y;
+            cursor: grab;
+            user-select: none;
+            border: 1px solid transparent;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .wheel-viewport:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+        .wheel-viewport:active {
+            cursor: grabbing;
+        }
+        .wheel-viewport::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
+        }
+
+        /* 選択位置のハイライトバー */
+        .wheel-highlight {
+            position: absolute;
+            top: 88px; /* (220 - 44) / 2 */
+            left: 0;
+            width: 100%;
+            height: 44px;
+            background: rgba(59, 130, 246, 0.15);
+            border-top: 2px solid #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+            pointer-events: none;
+            z-index: 5;
+            border-radius: 4px;
+        }
+
+        .wheel-scroll-padding {
+            height: 88px;
+            pointer-events: none;
+        }
+
+        .wheel-item {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #6b7280;
+            scroll-snap-align: center;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.15s, transform 0.15s;
+        }
+
+        .wheel-item.selected {
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 1.75rem;
+        }
+
+        .wheel-colon {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #9ca3af;
+            padding: 0 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .picker-footer {
+            display: flex;
+            gap: 0.75rem;
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+
+        .picker-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-cancel {
+            background: #27272a;
+            color: #a1a1aa;
+        }
+        .btn-cancel:hover {
+            background: #3f3f46;
+            color: #ffffff;
+        }
+
+        .btn-confirm {
+            background: #2563eb;
+            color: #ffffff;
+        }
+        .btn-confirm:hover {
+            background: #1d4ed8;
+        }
+
+        .buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .control-btn {
+            border: none;
+            cursor: pointer;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 80px; /* アイコンに合わせて幅を調整 */
+        }
+        
+        /* ボタン内のアイコンサイズ */
+        .control-btn svg {
+            width: 32px;
+            height: 32px;
+        }
+        
+        /* ★ボタンも悪目立ちしない落ち着いたトーンに変更 */
+        .btn-primary { background-color: #1e3a8a; color: #93c5fd; }
+        .btn-primary:hover:not(:disabled) { background-color: #1d4ed8; color: white; }
+        
+        .btn-warning { background-color: #78350f; color: #fde68a; }
+        .btn-warning:hover:not(:disabled) { background-color: #b45309; color: white; }
+        
+        .btn-danger { background-color: #7f1d1d; color: #fecaca; }
+        .btn-danger:hover:not(:disabled) { background-color: #b91c1c; color: white; }
+
+        .control-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background-color: #1f2937;
+        }
+
+        /* スマホ向けのレイアウト調整 */
+        @media (max-width: 768px) {
+            .controls-bar {
+                flex-direction: column;
+                gap: 1rem;
+                padding: 1rem;
+            }
+            .presets-group {
+                width: 100%;
+                justify-content: center;
+            }
+            .settings-group {
+                width: 100%;
+                justify-content: space-between;
+                gap: 0.5rem;
+                flex-wrap: wrap; /* 画面が小さい場合に折り返す */
+            }
+            .setting-item {
+                font-size: 1rem;
+                padding: 0.5rem;
+                flex: 1;
+                justify-content: center;
+            }
+            .setting-input {
+                font-size: 1rem;
+                width: 3em;
+            }
+            .buttons-group {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .control-btn {
+                flex: 1;
+                padding: 0.75rem 1rem;
+                font-size: 1.1rem;
+                min-width: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 画面左上のベル試聴・テスト再生ボタン -->
+    <button id="testBellBtn" onclick="playBell(1)" class="fixed top-5 left-5 z-40 p-3 text-gray-300 hover:text-white bg-zinc-800/90 hover:bg-zinc-700 rounded-xl transition-all duration-200 border border-zinc-700/80 flex items-center justify-center opacity-90 hover:opacity-100 shadow-lg" title="ベル音のテスト再生">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+    </button>
+
+    <!-- メインタイマー表示エリア -->
+    <div class="timer-container" id="timerContainer">
+        <!-- サブ表示 (最初はカウントダウン) -->
+        <div id="subTimeDisplay" class="time-sub" onclick="toggleDisplayMode()" title="クリックで表示切り替え">
+            00:00
+        </div>
+        
+        <!-- メイン表示 (最初はカウントアップ) -->
+        <div id="mainTimeDisplay" class="time-main" onclick="toggleDisplayMode()" title="クリックで表示切り替え">
+            00:00
+        </div>
+        
+        <!-- シームレスなフリーテキスト欄 -->
+        <textarea id="seamlessNote" class="seamless-textarea" rows="1" placeholder="発表のテーマ、進行メモなどを入力"></textarea>
+    </div>
+
+    <!-- コントロール & 設定エリア (モダンデザイン) -->
+    <div class="controls-bar">
+        <!-- プリセットボタン -->
+        <div class="presets-group">
+            <button class="preset-btn" onclick="applyPreset(15, 20, 29, '一般（発表20分＋質疑10分）')" title="1鈴:15分, 2鈴:20分, 3鈴:29分">一般</button>
+            <button class="preset-btn" onclick="applyPreset(12, 15, 24, '学生（発表15分＋質疑10分）')" title="1鈴:12分, 2鈴:15分, 3鈴:24分">学生</button>
+            <button class="preset-btn" onclick="applyPreset(15, 20, 34, '研究論文（発表20分＋コメント5分＋質疑10分）')" title="1鈴:15分, 2鈴:20分, 3鈴:34分">論文</button>
+        </div>
+
+        <!-- ベル設定 -->
+        <div class="settings-group">
+            <div class="setting-item">
+                <span class="font-bold text-gray-400">1鈴</span>
+                <button type="button" id="bell1Trigger" class="time-display-btn" onclick="openPicker(1)">
+                    <span id="bell1MinVal">10</span>:<span id="bell1SecVal">00</span>
+                </button>
+            </div>
+            <div class="setting-item">
+                <span class="font-bold text-gray-400">2鈴</span>
+                <button type="button" id="bell2Trigger" class="time-display-btn" onclick="openPicker(2)">
+                    <span id="bell2MinVal">15</span>:<span id="bell2SecVal">00</span>
+                </button>
+            </div>
+            <div class="setting-item">
+                <span class="font-bold text-gray-400">3鈴</span>
+                <button type="button" id="bell3Trigger" class="time-display-btn" onclick="openPicker(3)">
+                    <span id="bell3MinVal">20</span>:<span id="bell3SecVal">00</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 操作ボタン & ステータス -->
+        <div class="buttons-group">
+            <!-- ★ 準備完了ステータスを削除 -->
+            
+            <!-- 開始 / 再開ボタン -->
+            <button id="startBtn" class="control-btn btn-primary" onclick="startTimer()" title="開始 / 再開">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd" />
+                </svg>
+            </button>
+            
+            <!-- 一時停止ボタン -->
+            <button id="pauseBtn" class="control-btn btn-warning" onclick="pauseTimer()" disabled title="一時停止">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path fill-rule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75V5.25Z" clip-rule="evenodd" />
+                </svg>
+            </button>
+            
+            <!-- リセットボタン -->
+            <button id="resetBtn" class="control-btn btn-danger" onclick="resetTimer()" title="リセット">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ホイール時間設定モーダル -->
+    <div id="pickerModal" class="picker-modal-overlay hidden" onclick="if(event.target===this) closePicker()">
+        <div class="picker-modal-content">
+            <div class="picker-header text-center">
+                <span id="pickerTitle" class="text-lg font-bold text-gray-200">1鈴 時間設定</span>
+            </div>
+            <div class="picker-wheels-container">
+                <!-- 分 ホイール -->
+                <div class="wheel-column">
+                    <div class="flex items-center justify-between w-full px-2 mb-1">
+                        <span class="wheel-label mb-0">分</span>
+                        <input type="number" id="minInput" class="picker-input" min="0" max="99" placeholder="00" oninput="onDirectInput('min')" onfocus="this.select()" tabindex="1">
+                    </div>
+                    <div class="wheel-viewport" id="minWheelViewport" tabindex="3">
+                        <div class="wheel-highlight"></div>
+                        <div class="wheel-scroll-padding"></div>
+                        <div id="minWheelList"></div>
+                        <div class="wheel-scroll-padding"></div>
+                    </div>
+                </div>
+                <div class="wheel-colon">:</div>
+                <!-- 秒 ホイール -->
+                <div class="wheel-column">
+                    <div class="flex items-center justify-between w-full px-2 mb-1">
+                        <span class="wheel-label mb-0">秒</span>
+                        <input type="number" id="secInput" class="picker-input" min="0" max="59" placeholder="00" oninput="onDirectInput('sec')" onfocus="this.select()" tabindex="2">
+                    </div>
+                    <div class="wheel-viewport" id="secWheelViewport" tabindex="4">
+                        <div class="wheel-highlight"></div>
+                        <div class="wheel-scroll-padding"></div>
+                        <div id="secWheelList"></div>
+                        <div class="wheel-scroll-padding"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="picker-footer">
+                <button type="button" class="picker-btn btn-cancel" onclick="closePicker()" tabindex="5">キャンセル</button>
+                <button type="button" class="picker-btn btn-confirm" onclick="confirmPicker()" tabindex="6">決定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 状態変数 ---
+        let startTime = 0;          // 開始時刻 (ミリ秒)
+        let elapsedTime = 0;        // 経過時間 (ミリ秒)
+        let timerInterval = null;   // setIntervalのID
+        let isRunning = false;      // 実行中フラグ
+        
+        // メイン表示が「カウントアップ(true)」か「カウントダウン(false)」か
+        let isMainCountUp = true;   
+
+        // ベルの時間設定 (分・秒)
+        let bellValues = {
+            1: { min: 10, sec: 0 },
+            2: { min: 15, sec: 0 },
+            3: { min: 20, sec: 0 }
+        };
+        let currentBellTarget = 1;
+        const ITEM_HEIGHT = 44; // ホイールアイテム1個の高さ (px)
+
+        // ベルの鳴動状態管理
+        let bell1Rung = false;
+        let bell2Rung = false;
+        let bell3Rung = false;
+
+        // --- DOM要素 ---
+        const mainDisplay = document.getElementById('mainTimeDisplay');
+        const subDisplay = document.getElementById('subTimeDisplay');
+
+        // フリーテキスト欄の自動リサイズ ---
+        seamlessNote.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+
+        // ホイールリストの生成 & 初期化
+        function initWheelLists() {
+            const minList = document.getElementById('minWheelList');
+            const secList = document.getElementById('secWheelList');
+            minList.innerHTML = '';
+            secList.innerHTML = '';
+
+            for (let i = 0; i <= 99; i++) {
+                const item = document.createElement('div');
+                item.className = 'wheel-item';
+                item.textContent = i.toString().padStart(2, '0');
+                item.onclick = () => scrollToVal('minWheelViewport', i);
+                minList.appendChild(item);
+            }
+
+            for (let i = 0; i <= 59; i++) {
+                const item = document.createElement('div');
+                item.className = 'wheel-item';
+                item.textContent = i.toString().padStart(2, '0');
+                item.onclick = () => scrollToVal('secWheelViewport', i);
+                secList.appendChild(item);
+            }
+
+            setupScrollHighlight('minWheelViewport');
+            setupScrollHighlight('secWheelViewport');
+            enableDragScroll(document.getElementById('minWheelViewport'));
+            enableDragScroll(document.getElementById('secWheelViewport'));
+        }
+
+        // マウスドラッグ & タッチフリック操作の追加
+        function enableDragScroll(viewport) {
+            let isDown = false;
+            let startY = 0;
+            let scrollTop = 0;
+
+            viewport.addEventListener('pointerdown', (e) => {
+                isDown = true;
+                viewport.style.scrollSnapType = 'none'; // ドラッグ中は一時的にスナップを解除してスムーズ化
+                startY = e.pageY;
+                scrollTop = viewport.scrollTop;
+                try {
+                    viewport.setPointerCapture(e.pointerId);
+                } catch(err) {}
+            });
+
+            viewport.addEventListener('pointermove', (e) => {
+                if (!isDown) return;
+                const currentY = e.pageY;
+                const walk = (currentY - startY);
+                viewport.scrollTop = scrollTop - walk;
+            });
+
+            const handlePointerUp = (e) => {
+                if (!isDown) return;
+                isDown = false;
+                viewport.style.scrollSnapType = 'y mandatory'; // 手を離したら自動で一番近い数字にスナップ
+                try {
+                    viewport.releasePointerCapture(e.pointerId);
+                } catch(err) {}
+            };
+
+            viewport.addEventListener('pointerup', handlePointerUp);
+            viewport.addEventListener('pointercancel', handlePointerUp);
+        }
+
+        function scrollToVal(viewportId, val) {
+            const viewport = document.getElementById(viewportId);
+            viewport.scrollTo({ top: val * ITEM_HEIGHT, behavior: 'smooth' });
+        }
+
+        function getWheelValue(viewportId) {
+            const viewport = document.getElementById(viewportId);
+            return Math.round(viewport.scrollTop / ITEM_HEIGHT);
+        }
+
+        function setupScrollHighlight(viewportId) {
+            const viewport = document.getElementById(viewportId);
+            viewport.addEventListener('scroll', () => {
+                const val = getWheelValue(viewportId);
+                const items = viewport.querySelectorAll('.wheel-item');
+                items.forEach((item, index) => {
+                    if (index === val) {
+                        item.classList.add('selected');
+                    } else {
+                        item.classList.remove('selected');
+                    }
+                });
+
+                // スクロール時にアクティブ要素でないインプットの表示も連動更新
+                if (viewportId === 'minWheelViewport' && document.activeElement !== document.getElementById('minInput')) {
+                    document.getElementById('minInput').value = val.toString().padStart(2, '0');
+                } else if (viewportId === 'secWheelViewport' && document.activeElement !== document.getElementById('secInput')) {
+                    document.getElementById('secInput').value = val.toString().padStart(2, '0');
+                }
+            });
+        }
+
+        // キーボード直接入力時の処理
+        function onDirectInput(type) {
+            if (type === 'min') {
+                const input = document.getElementById('minInput');
+                let val = parseInt(input.value, 10);
+                if (isNaN(val)) val = 0;
+                if (val > 99) { val = 99; input.value = 99; }
+                if (val < 0) { val = 0; input.value = 0; }
+                scrollToVal('minWheelViewport', val);
+            } else if (type === 'sec') {
+                const input = document.getElementById('secInput');
+                let val = parseInt(input.value, 10);
+                if (isNaN(val)) val = 0;
+                if (val > 59) { val = 59; input.value = 59; }
+                if (val < 0) { val = 0; input.value = 0; }
+                scrollToVal('secWheelViewport', val);
+            }
+        }
+
+        // ピッカーを開く
+        function openPicker(bellNum) {
+            if (isRunning) return; // 実行中は開かない
+            currentBellTarget = bellNum;
+            document.getElementById('pickerTitle').textContent = `${bellNum}鈴 時間設定`;
+
+            const modal = document.getElementById('pickerModal');
+            modal.classList.remove('hidden');
+
+            const { min, sec } = bellValues[bellNum];
+
+            // インプット初期値の設定
+            const minInput = document.getElementById('minInput');
+            const secInput = document.getElementById('secInput');
+            minInput.value = min.toString().padStart(2, '0');
+            secInput.value = sec.toString().padStart(2, '0');
+
+            // スクロール位置の設定（表示後に実行）
+            setTimeout(() => {
+                const minVp = document.getElementById('minWheelViewport');
+                const secVp = document.getElementById('secWheelViewport');
+                minVp.scrollTop = min * ITEM_HEIGHT;
+                secVp.scrollTop = sec * ITEM_HEIGHT;
+
+                // 分入力欄にオートフォーカスしてキーボード入力可能な状態に
+                minInput.focus();
+                minInput.select();
+            }, 50);
+        }
+
+        function closePicker() {
+            document.getElementById('pickerModal').classList.add('hidden');
+        }
+
+        function confirmPicker() {
+            let min = parseInt(document.getElementById('minInput').value, 10);
+            let sec = parseInt(document.getElementById('secInput').value, 10);
+
+            if (isNaN(min)) min = getWheelValue('minWheelViewport');
+            if (isNaN(sec)) sec = getWheelValue('secWheelViewport');
+
+            min = Math.min(99, Math.max(0, min));
+            sec = Math.min(59, Math.max(0, sec));
+
+            bellValues[currentBellTarget] = { min, sec };
+            updateBellTriggersUI();
+
+            if (!isRunning && elapsedTime === 0) {
+                updateDisplay();
+            }
+
+            closePicker();
+        }
+
+        // モーダルでのEnter/Escキー操作ハンドラ
+        document.addEventListener('keydown', (e) => {
+            const modal = document.getElementById('pickerModal');
+            if (modal.classList.contains('hidden')) return;
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmPicker();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closePicker();
+            }
+        });
+
+        function updateBellTriggersUI() {
+            document.getElementById('bell1MinVal').textContent = bellValues[1].min.toString().padStart(2, '0');
+            document.getElementById('bell1SecVal').textContent = bellValues[1].sec.toString().padStart(2, '0');
+
+            document.getElementById('bell2MinVal').textContent = bellValues[2].min.toString().padStart(2, '0');
+            document.getElementById('bell2SecVal').textContent = bellValues[2].sec.toString().padStart(2, '0');
+
+            document.getElementById('bell3MinVal').textContent = bellValues[3].min.toString().padStart(2, '0');
+            document.getElementById('bell3SecVal').textContent = bellValues[3].sec.toString().padStart(2, '0');
+        }
+
+        // 設定エリアの有効/無効を切り替える関数
+        function toggleSettingsDisable(disabled) {
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.disabled = disabled);
+            document.querySelectorAll('.time-display-btn').forEach(btn => btn.disabled = disabled);
+        }
+
+        // 設定値の取得用
+        const getSettings = () => {
+            const getMs = (bellObj) => (bellObj.min * 60 + bellObj.sec) * 1000;
+            const b1 = getMs(bellValues[1]);
+            const b2 = getMs(bellValues[2]);
+            const b3 = getMs(bellValues[3]);
+            return {
+                bell1: b1,
+                bell2: b2,
+                bell3: b3,
+                targetTime: b2 // カウントダウンの基準は2鈴(終了時間)
+            };
+        };
+
+        // --- ベル音生成 (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playBell(count) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            let played = 0;
+            
+            function ring() {
+                if (played >= count) return;
+                
+                const now = audioCtx.currentTime;
+                
+                // --- 1. 重厚な金属打撃音（重みのあるクラッパーのアタック衝撃） ---
+                const bufferSize = Math.floor(audioCtx.sampleRate * 0.02);
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+
+                const noiseFilter = audioCtx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.setValueAtTime(3600, now);
+                noiseFilter.Q.setValueAtTime(1.8, now);
+
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.4, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+                noise.start(now);
+
+                // --- 2. 肉厚な真鍮ベルの深みと澄んだ余韻（ボディ共鳴＋高純度倍音） ---
+                const partials = [
+                    // 深み・重厚感を創出するボディ共鳴音（C6: 1046.5Hz / 1オクターブ下のド）
+                    { freq: 1046.5, gain: 0.28, decay: 3.8 },
+                    // 主基音（「ド」の音階 C7: 2093Hz の澄んだ高音とうなり）
+                    { freq: 2093.0, gain: 0.45, decay: 4.8 },
+                    { freq: 2096.2, gain: 0.45, decay: 4.8 },
+                    // 金属碗の共鳴モード（芯のある響き）
+                    { freq: 3390, gain: 0.22, decay: 2.5 },
+                    { freq: 5735, gain: 0.12, decay: 1.2 },
+                    // 透明感を際立たせる高域のアタック＆余韻
+                    { freq: 8870, gain: 0.05, decay: 0.5 }
+                ];
+
+                partials.forEach(p => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(p.freq, now);
+
+                    // 瞬間的な立ち上がりと美しい長い指数減衰
+                    gain.gain.setValueAtTime(0.0001, now);
+                    gain.gain.linearRampToValueAtTime(p.gain, now + 0.002);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + p.decay);
+                });
+
+                played++;
+                
+                if (played < count) {
+                    setTimeout(ring, 550);
+                }
+            }
+            
+            ring();
+            showNotice(`${count}鈴`);
+        }
+
+        // --- タイマー操作 ---
+        function applyPreset(bell1, bell2, bell3, noteText = '') {
+            bellValues[1] = { min: bell1, sec: 0 };
+            bellValues[2] = { min: bell2, sec: 0 };
+            bellValues[3] = { min: bell3, sec: 0 };
+
+            updateBellTriggersUI();
+            
+            if (noteText) {
+                const noteElem = document.getElementById('seamlessNote');
+                noteElem.value = noteText;
+                noteElem.style.height = 'auto';
+                noteElem.style.height = (noteElem.scrollHeight) + 'px';
+            }
+
+            if (!isRunning && elapsedTime === 0) {
+                updateDisplay();
+            }
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+            
+            if (elapsedTime === 0) {
+                startTime = Date.now();
+                bell1Rung = false;
+                bell2Rung = false;
+                bell3Rung = false;
+                timerContainer.style.backgroundColor = '';
+            } else {
+                startTime = Date.now() - elapsedTime;
+            }
+            
+            isRunning = true;
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            
+            toggleSettingsDisable(true);
+            
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            timerInterval = setInterval(updateTimer, 50);
+        }
+
+        function pauseTimer() {
+            if (!isRunning) return;
+            
+            clearInterval(timerInterval);
+            isRunning = false;
+            
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            
+            toggleSettingsDisable(false);
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            elapsedTime = 0;
+            startTime = 0;
+            
+            bell1Rung = false;
+            bell2Rung = false;
+            bell3Rung = false;
+            
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            timerContainer.style.backgroundColor = '';
+            
+            toggleSettingsDisable(false);
+            
+            updateDisplay();
+        }
+
+        // ミリ秒をMM:SS形式に変換
+        function formatTime(ms, isCountdown = false) {
+            let totalSeconds;
+            
+            if (isCountdown && ms > 0) {
+                totalSeconds = Math.ceil(ms / 1000);
+            } else {
+                totalSeconds = Math.floor(Math.abs(ms) / 1000);
+            }
+            
+            let minutes = Math.floor(totalSeconds / 60);
+            let seconds = totalSeconds % 60;
+            
+            let sign = '';
+            if (isCountdown) {
+                sign = ms < 0 ? '+' : '';
+            } else {
+                sign = ms < 0 ? '-' : '';
+            }
+            
+            return `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateTimer() {
+            elapsedTime = Date.now() - startTime;
+            
+            const settings = getSettings();
+            
+            checkBells(elapsedTime, settings);
+            updateDisplay(elapsedTime, settings.targetTime);
+        }
+
+        function checkBells(currentMs, settings) {
+            if (settings.bell1 > 0 && currentMs >= settings.bell1 && !bell1Rung) {
+                playBell(1);
+                bell1Rung = true;
+            }
+            if (settings.bell2 > 0 && currentMs >= settings.bell2 && !bell2Rung) {
+                playBell(2);
+                bell2Rung = true;
+                timerContainer.style.backgroundColor = '#064e3b';
+                timerContainer.style.transition = 'background-color 0.5s';
+            }
+            if (settings.bell3 > 0 && currentMs >= settings.bell3 && !bell3Rung) {
+                playBell(3);
+                bell3Rung = true;
+                timerContainer.style.backgroundColor = '#7f1d1d';
+            }
+        }
+
+        function updateDisplay(currentMs = 0, targetMs = null) {
+            if (targetMs === null) {
+                targetMs = getSettings().targetTime;
+            }
+            
+            const countUpStr = formatTime(currentMs, false);
+            const remainingMs = targetMs - currentMs;
+            const countDownStr = formatTime(remainingMs, true);
+            
+            const dangerColor = '#ef4444';
+            const mainColor = '#ffffff';
+            const subColor = '#9ca3af';
+
+            if (isMainCountUp) {
+                mainDisplay.textContent = countUpStr;
+                subDisplay.textContent = countDownStr;
+                
+                mainDisplay.style.color = mainColor;
+                subDisplay.style.color = remainingMs < 0 ? dangerColor : subColor;
+            } else {
+                mainDisplay.textContent = countDownStr;
+                subDisplay.textContent = countUpStr;
+                
+                mainDisplay.style.color = remainingMs < 0 ? dangerColor : mainColor;
+                subDisplay.style.color = subColor;
+            }
+        }
+
+        function toggleDisplayMode() {
+            isMainCountUp = !isMainCountUp;
+            updateDisplay(elapsedTime);
+        }
+        
+        function showNotice(text) {
+            const notice = document.createElement('div');
+            notice.textContent = text;
+            notice.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-4xl font-bold bg-black bg-opacity-70 text-white px-8 py-4 rounded-xl pointer-events-none z-50';
+            notice.style.transition = 'opacity 1s ease-out';
+            
+            timerContainer.appendChild(notice);
+            
+            setTimeout(() => {
+                notice.style.opacity = '0';
+                setTimeout(() => notice.remove(), 1000);
+            }, 2000);
+        }
+
+        // 初期表示の設定
+        initWheelLists();
+        updateDisplay();
+    </script>
+</body>
+</html>
